@@ -1,0 +1,40 @@
+[build-system]
+requires = ["uv_build"]
+build-backend = "uv_build"
+
+[project]
+name = "builder"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = [
+  "actions-python-core",
+  "actions-python-github[githubkit]",
+  "packaging",
+  "pydantic",
+  "pydantic-core",
+  "requests",
+  "rich",
+  "ryaml",
+  "wheel",
+]
+
+[project.scripts]
+build-container = "builder.container:build_container"
+build-package = "builder.package:build_package"
+matrix = "builder.matrix:matrix"
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "UP"]
+ignore = ["E501"]
+
+[tool.uv.build-backend]
+module-root = ""
+module-name = "builder"
+
+[tool.uv.sources]
+pydantic-core = [
+  { marker = "sys_platform == 'freebsd14'", url = "https://github.com/cynix/freebsd-binaries/releases/download/pydantic-core-v2.41.4/pydantic_core-2.41.4-cp312-cp312-freebsd_14_3_amd64.whl" },
+]
+ryaml = [
+  { marker = "sys_platform == 'freebsd14'", url = "https://github.com/cynix/freebsd-binaries/releases/download/ryaml-v0.4.0/ryaml-0.4.0-cp312-cp312-freebsd_14_3_amd64.whl" },
+]

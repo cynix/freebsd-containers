@@ -1,0 +1,54 @@
+name: Dispatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      projects:
+        type: string
+        required: true
+        default: all
+      force:
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  compute:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.compute.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          check-latest: true
+
+      - name: Compute matrix
+        id: compute
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INPUT_PROJECTS: ${{ inputs.projects }}
+          INPUT_FORCE: ${{ inputs.force }}
+        run: |
+          go run ./build matrix
+
+  matrix:
+    needs: [compute]
+    strategy:
+      matrix: ${{ fromJSON(needs.compute.outputs.matrix) }}
+      fail-fast: false
+    name: ${{ matrix.project }}${{ matrix.version && '-v' || '' }}${{ matrix.version }}
+    uses: ./.github/workflows/project.yaml
+    with:
+      project: ${{ matrix.project }}
+      version: ${{ matrix.version }}
+      packages: ${{ matrix.packages }}
+      containers: ${{ matrix.containers }}
+    permissions:
+      contents: write
+      packages: write
