@@ -1,0 +1,39 @@
+name: Project
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        type: string
+        required: true
+      version:
+        type: string
+        required: false
+      packages:
+        type: string
+        required: false
+      containers:
+        type: string
+        required: false
+
+jobs:
+  packages:
+    if: "inputs.packages != ''"
+    uses: ./.github/workflows/packages.yaml
+    with:
+      project: ${{ inputs.project }}
+      version: ${{ inputs.version }}
+      packages: ${{ inputs.packages }}
+    permissions:
+      contents: write
+
+  containers:
+    needs: [packages]
+    if: always() && inputs.containers != '' && (needs.packages.result == 'success' || needs.packages.result == 'skipped')
+    uses: ./.github/workflows/containers.yaml
+    with:
+      project: ${{ inputs.project }}
+      version: ${{ inputs.version }}
+      containers: ${{ inputs.containers }}
+    permissions:
+      packages: write

@@ -1,0 +1,60 @@
+name: Containers
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        type: string
+        required: true
+      version:
+        type: string
+        required: false
+      containers:
+        type: string
+        required: true
+
+jobs:
+  container:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        container: ${{ fromJSON(inputs.containers) }}
+    permissions:
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          check-latest: true
+
+      - name: Setup FreeBSD VM
+        uses: cynix/freebsd-firecracker-action@v0.6.0-containers
+
+      - name: Build FreeBSD builder
+        shell: bash
+        run: |
+          env GOOS=freebsd GOARCH=amd64 go build -o "build/build.freebsd_amd64" -trimpath -ldflags "-s -w" ./build
+
+      - name: Build
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INPUT_PROJECT: ${{ inputs.project }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_CONTAINER: ${{ matrix.container }}
+        run: |
+          go run ./build container
+
+      - name: Cleanup
+        uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          package: ${{ matrix.container }}
+          keep-n-tagged: 3
+          exclude-tags: latest
+          delete-untagged: true
+          delete-ghost-images: true
+          delete-partial-images: true

@@ -1,0 +1,105 @@
+name: Packages
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+      packages:
+        type: string
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include: ${{ fromJSON(inputs.packages) }}
+    name: build (${{ matrix.package }})
+    steps:
+      - name: Free disk space
+        if: false
+        uses: mathio/gha-cleanup@v1
+        with:
+          remove-browsers: true
+          verbose: true
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Checkout ${{ matrix.repo }} @ ${{ matrix.ref }}
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ matrix.repo }}
+          ref: ${{ matrix.ref }}
+          path: src
+
+      - name: Setup go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          check-latest: true
+
+      - name: Setup goreleaser
+        if: matrix.builder == 'go'
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          install-only: true
+
+      - name: Build
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INPUT_PROJECT: ${{ inputs.project }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PACKAGE: ${{ matrix.package }}
+        run: |
+          go run ./build package
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.project }}#${{ matrix.package }}
+          path: dist/${{ matrix.package }}-*
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: ${{ inputs.project }}#*
+          path: ./dist/
+          merge-multiple: true
+
+      - name: Create release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.project }}-v${{ inputs.version }}
+        run: |
+          echo "Deleting existing $TAG"
+          gh release delete --cleanup-tag --yes $TAG || true
+
+          echo "Releasing $TAG"
+          gh release create --latest=true --notes=$TAG --title=$TAG $TAG ./dist/*
+
+          for i in $(gh release list --json=tagName --jq="map(select(.tagName | startswith(\"${{ inputs.project }}-\")))[3:] | .[].tagName"); do
+            echo "Deleting $i"
+            gh release delete --cleanup-tag --yes $i || echo "Could not delete $i"
+          done
