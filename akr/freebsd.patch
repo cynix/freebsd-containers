@@ -1,0 +1,67 @@
+diff --git c/crates/kr/src/launch.rs w/crates/kr/src/launch.rs
+index 99fb06c..09ba663 100644
+--- c/crates/kr/src/launch.rs
++++ w/crates/kr/src/launch.rs
+@@ -41,6 +41,11 @@ impl Daemon {
+     fn os_specific(self) -> LaunchAgent {
+         return LaunchAgent::from(self);
+     }
++
++    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
++    fn os_specific(self) -> NoopDaemon {
++        return NoopDaemon::from(self);
++    }
+ }
+ 
+ #[cfg(target_os = "macos")]
+@@ -153,3 +158,24 @@ impl SystemdService {
+         Ok(())
+     }
+ }
++
++#[cfg(not(any(target_os = "linux", target_os = "macos")))]
++struct NoopDaemon {}
++
++#[cfg(not(any(target_os = "linux", target_os = "macos")))]
++impl From<Daemon> for NoopDaemon {
++    fn from(_d: Daemon) -> Self {
++        Self {}
++    }
++}
++
++#[cfg(not(any(target_os = "linux", target_os = "macos")))]
++impl NoopDaemon {
++    fn install(&self) -> Result<(), Error> {
++        Ok(())
++    }
++
++    fn render(&self) -> Result<String, Error> {
++        Ok("# Please start akr manually".to_string())
++    }
++}
+diff --git c/crates/kr/src/prompt.rs w/crates/kr/src/prompt.rs
+index 4fb1e29..4ab68f8 100644
+--- c/crates/kr/src/prompt.rs
++++ w/crates/kr/src/prompt.rs
+@@ -20,7 +20,7 @@ impl PasswordPrompt {
+         #[cfg(target_os = "macos")]
+         let commmand_str = "pinentry-mac";
+ 
+-        #[cfg(target_os = "linux")]
++        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+         let commmand_str = "pinentry";
+ 
+         let mut pinentry = Command::new(commmand_str)
+diff --git c/crates/kr/src/ssh_agent.rs w/crates/kr/src/ssh_agent.rs
+index d366239..fcb3739 100644
+--- c/crates/kr/src/ssh_agent.rs
++++ w/crates/kr/src/ssh_agent.rs
+@@ -153,7 +153,7 @@ impl Agent {
+                 rp_id,
+                 extensions: None,
+                 key_handle: id.map(|id| id.key_handle.clone()).map(Base64Buffer),
+-                key_handles: None,
++                key_handles: id.map(|id| id.key_handle.clone()).map(Base64Buffer).map(|b| vec![b]),
+             }))
+             .await?;
+ 

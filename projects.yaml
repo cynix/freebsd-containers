@@ -1,0 +1,258 @@
+---
+akr:
+  source:
+    repo: akamai/akr
+    ref: commit:2ebc04fac9d2dbc5274b47e2a2456f417adaa2d5
+    version: 0.0.0-git.20250923202250-1
+  builder: cargo
+
+amule:
+  container:
+    assets:
+      - pkg: amule
+    user: amule=852
+    entrypoint: /usr/local/bin/amuled
+
+caddy:
+  container:
+    assets:
+      - release: caddyserver/caddy
+        glob: "caddy_{version}_freebsd_{arch}.tar.gz"
+    user: www
+
+cloudflared:
+  source: cloudflare/cloudflared
+  builder: go
+  packages:
+    cloudflared:
+      container:
+        user: cloudflared=443
+  defaults:
+    package:
+      flags:
+        - -mod=vendor
+      ldflags:
+        - -X=main.Version={{ .Version }}
+        - -X=main.BuildTime={{ .Date }}
+
+grafana:
+  source: grafana/grafana
+  builder: cgo
+  packages:
+    grafana:
+      binaries:
+        - grafana
+        - grafana-cli
+        - grafana-server
+      container:
+        files:
+          - src: conf/
+            dst: /usr/local/share/grafana/
+          - src: public/
+            dst: /usr/local/share/grafana/
+        user: grafana=904
+  defaults:
+    package:
+      main: ./pkg/cmd/{binary}
+      ldflags:
+        - -X=main.version={{ .Version }}
+        - -X=main.commit={{ .ShortCommit }}
+      tags:
+        - oss
+      before:
+        - env -u GOOS -u GOARCH go run ./pkg/build/wire/cmd/wire/main.go gen -tags=oss ./pkg/server
+        - sh -c 'curl -sSL https://dl.grafana.com/oss/release/grafana-{{ .Version }}.linux-amd64.tar.gz | tar -zxf- --strip-components=1 grafana-{{ .Version }}/public'
+      files:
+        - LICENSE
+        - conf/defaults.ini
+        - public/**/*
+
+groundcontrol:
+  source:
+    repo: malyn/groundcontrol
+    ref: tag
+  builder: cargo
+
+jdownloader:
+  arch: [amd64]
+  container:
+    assets:
+      - file: https://installer.jdownloader.org/JDownloader.jar
+        version:
+          url: https://svn.jdownloader.org/build.php
+          regex: 'Latest Revision:[^\d]+(?P<version>\d+)'
+      - pkg: ca_root_nss
+      - pkg: openjdk21-jre
+    env:
+      JD_HOME: /jdownloader
+    user: jdownloader=10000
+    entrypoint: /entrypoint.sh
+
+openldap:
+  container:
+    assets:
+      - pkg: openldap26-server
+      - pkg: FreeBSD-libsqlite3
+    entrypoint: /usr/local/libexec/slapd
+
+plex:
+  arch: [amd64]
+  container:
+    assets:
+      - pkg: plexmediaserver
+      - pkg: FreeBSD-locales
+    env:
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+      LD_LIBRARY_PATH: /usr/local/share/plexmediaserver/lib
+      PATH: /usr/local/share/plexmediaserver/Resources/Python/bin:$PATH
+      PYTHONHOME: /usr/local/share/plexmediaserver/Resources/Python
+      PLEX_MEDIA_SERVER_INFO_VENDOR: FreeBSD
+      PLEX_MEDIA_SERVER_INFO_DEVICE: NAS
+      PLEX_MEDIA_SERVER_INFO_MODEL: Podman
+      PLEX_MEDIA_SERVER_INFO_PLATFORM_VERSION: 14
+      PLEX_MEDIA_SERVER_HOME: /usr/local/share/plexmediaserver
+      PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR: /plex
+      PLEX_MEDIA_SERVER_LOG_DIR: /plex/Plex Media Server/Logs
+      PLEX_MEDIA_SERVER_MAX_PLUGIN_PROCS: 6
+      PLEX_MEDIA_SERVER_PIDFILE: /tmp/plex.pid
+    user: plex
+    entrypoint: /usr/local/share/plexmediaserver/Plex_Media_Server
+
+qbittorrent:
+  arch: [amd64]
+  container:
+    assets:
+      - pkg: qbittorrent-nox
+      - pkg: ca_root_nss
+      - pkg: FreeBSD-utilities
+    user: qbittorrent
+
+redis:
+  container:
+    assets:
+      - pkg: redis
+    user: redis
+    entrypoint: /usr/local/bin/redis-server
+
+resilio:
+  arch: [amd64]
+  container:
+    base: freebsd:runtime
+    assets:
+      - archive: https://download-cdn.resilio.com/{version}/freebsd/x64/0/resilio-sync_freebsd_x64.tar.gz
+        version: 2.8.1.1390
+        files:
+          - src: "**/rslsync"
+    user: resilio=851
+
+samba-ldap:
+  arch: [amd64]
+  container:
+    base: freebsd:runtime
+    assets:
+      - pkg: samba420
+      - pkg: FreeBSD-openssl
+      - pkg: FreeBSD-utilities
+      - pkg: nss-pam-ldapd
+      - release:
+          repo: cynix/freebsd-binaries
+          ref: /groundcontrol-v(?P<version>.+)/
+        glob: "groundcontrol-v{version}-{triple}.tar.gz"
+    script: |
+      mkdir -m711 var/run/config
+      ln -sf /var/run/config/ldap.conf usr/local/etc/openldap/ldap.conf
+      ln -sf /var/run/config/nslcd.conf usr/local/etc/nslcd.conf
+      mv etc/ssl var/run/
+      ln -sf /var/run/ssl etc/ssl
+      rmdir var/log/samba4
+      ln -sf /tmp/samba4 var/log/samba4
+    entrypoint: [/usr/local/bin/groundcontrol, /usr/local/etc/groundcontrol.toml]
+
+snixy:
+  container:
+    assets:
+      - release: cynix/snixy
+        glob: "snixy-v{version}-freebsd_{arch}.tar.gz"
+    user: snixy=940  # _tcpproxy
+
+step-ca:
+  container:
+    assets:
+      - pkg: step-certificates
+      - pkg: pcsc-lite
+    user: step
+    entrypoint: /usr/local/sbin/step-ca
+
+step-posture-connector:
+  source: jedda/step-posture-connector
+  builder: go
+  packages:
+    step-posture-connector:
+      container:
+        user: step-posture-connector=266  # step
+
+sing-box:
+  source: sagernet/sing-box
+  builder: go
+  packages:
+    sing-box:
+      container:
+        user: sing-box=360  # v2ray
+  defaults:
+    package:
+      ldflags:
+        - -X=github.com/sagernet/sing-box/constant.Version={{ .Version }}
+      tags:
+        - with_gvisor
+        - with_quic
+        - with_dhcp
+        - with_wireguard
+        - with_utls
+        - with_acme
+        - with_clash_api
+        - with_tailscale
+
+victoria-logs:
+  source:
+    repo: VictoriaMetrics/VictoriaMetrics
+    ref: /v(?P<version>.+)-victorialogs/
+  builder: go
+  packages:
+    victoria-logs:
+      container:
+        user: victoria-logs=363
+  defaults:
+    package:
+      main: ./app/{binary}
+      ldflags:
+        - '-X=github.com/VictoriaMetrics/VictoriaMetrics/lib/buildinfo.Version={{ .Version }}'
+      tags:
+        - netgo
+        - osusergo
+
+victoria-metrics:
+  source: VictoriaMetrics/VictoriaMetrics
+  builder: go
+  packages:
+    victoria-metrics:
+      container:
+        user: victoria-metrics=289
+    vmalert:
+      container:
+        user: alertmanager=479
+    vmutils:
+      binaries:
+        - vmagent
+        - vmauth
+        - vmbackup
+        - vmctl
+        - vmrestore
+  defaults:
+    package:
+      main: ./app/{binary}
+      ldflags:
+        - '-X=github.com/VictoriaMetrics/VictoriaMetrics/lib/buildinfo.Version={{ .Version }}'
+      tags:
+        - netgo
+        - osusergo
