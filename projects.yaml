@@ -1,0 +1,237 @@
+---
+amule:
+  container:
+    pkg:
+      - amule
+    user: amule=852
+    entrypoint: /usr/local/bin/amuled
+
+caddy:
+  container:
+    tarball:
+      - repo: caddyserver/caddy
+        glob: "*_freebsd_{arch}.tar.gz"
+    user: www
+
+cloudflared:
+  go:
+    repo: cloudflare/cloudflared
+    packages:
+      cloudflared:
+        container:
+          user: cloudflared=443
+    build:
+      flags:
+        - -mod=vendor
+      ldflags:
+        - -X=main.Version={{ .Version }}
+        - -X=main.BuildTime={{ .Date }}
+
+grafana:
+  go:
+    repo: grafana/grafana
+    cgo: true
+    packages:
+      grafana:
+        binaries:
+          - grafana
+          - grafana-cli
+          - grafana-server
+        container:
+          user: grafana=904
+          files:
+            conf: /usr/local/share/grafana/conf/
+            public: /usr/local/share/grafana/public/
+    before:
+      - env -u GOOS -u GOARCH go run ./pkg/build/wire/cmd/wire/main.go gen -tags=oss ./pkg/server
+      - sh -c 'curl -sSL https://dl.grafana.com/oss/release/grafana-{{ .Version }}.linux-amd64.tar.gz | tar -zxf- --strip-components=1 grafana-{{ .Version }}/public'
+    build:
+      main: ./pkg/cmd/{binary}
+      ldflags:
+        - -X=main.version={{ .Version }}
+        - -X=main.commit={{ .ShortCommit }}
+      tags:
+        - oss
+    files:
+      - LICENSE
+      - conf/defaults.ini
+      - public/**/*
+
+jdownloader:
+  container:
+    arch: [amd64]
+    file:
+      - url: https://installer.jdownloader.org/JDownloader.jar
+        version:
+          url: https://svn.jdownloader.org/build.php
+          regex: 'Latest Revision:[^\d]+(?P<version>\d+)'
+    pkg:
+      - ca_root_nss
+      - openjdk21-jre
+    env:
+      JD_HOME: /jdownloader
+    user: jdownloader=10000
+    entrypoint: /entrypoint.sh
+
+openldap:
+  container:
+    pkg:
+      - openldap26-server
+      - FreeBSD-libsqlite3
+    entrypoint: /usr/local/libexec/slapd
+
+plex:
+  container:
+    arch: [amd64]
+    pkg:
+      - plexmediaserver
+      - FreeBSD-locales
+    env:
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+      LD_LIBRARY_PATH: /usr/local/share/plexmediaserver/lib
+      PATH: /usr/local/share/plexmediaserver/Resources/Python/bin:$PATH
+      PYTHONHOME: /usr/local/share/plexmediaserver/Resources/Python
+      PLEX_MEDIA_SERVER_INFO_VENDOR: FreeBSD
+      PLEX_MEDIA_SERVER_INFO_DEVICE: NAS
+      PLEX_MEDIA_SERVER_INFO_MODEL: Podman
+      PLEX_MEDIA_SERVER_INFO_PLATFORM_VERSION: 14
+      PLEX_MEDIA_SERVER_HOME: /usr/local/share/plexmediaserver
+      PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR: /plex
+      PLEX_MEDIA_SERVER_LOG_DIR: /plex/Plex Media Server/Logs
+      PLEX_MEDIA_SERVER_MAX_PLUGIN_PROCS: 6
+      PLEX_MEDIA_SERVER_PIDFILE: /tmp/plex.pid
+    user: plex
+    entrypoint: /usr/local/share/plexmediaserver/Plex_Media_Server
+
+qbittorrent:
+  container:
+    arch: [amd64]
+    pkg:
+      - qbittorrent-nox
+      - ca_root_nss
+      - FreeBSD-utilities
+    user: qbittorrent
+
+redis:
+  container:
+    pkg:
+      - redis
+    user: redis
+    entrypoint: /usr/local/bin/redis-server
+
+resilio:
+  container:
+    base: freebsd:runtime
+    arch: [amd64]
+    tarball:
+      - url: https://download-cdn.resilio.com/{version}/freebsd/x64/0/resilio-sync_freebsd_x64.tar.gz#rslsync
+        version: 2.8.1.1390
+    user: resilio=851
+
+samba-ldap:
+  container:
+    base: freebsd:runtime
+    arch: [amd64]
+    pkg:
+      - samba420
+      - FreeBSD-openssl
+      - FreeBSD-utilities
+      - nss-pam-ldapd
+    tarball:
+      - url: https://github.com/cynix/groundcontrol/releases/download/edge/groundcontrol-{triple}.tar.gz#groundcontrol
+    script: |
+      mkdir -m711 {root}/var/run/config
+      ln -sf /var/run/config/ldap.conf {root}/usr/local/etc/openldap/ldap.conf
+      ln -sf /var/run/config/nslcd.conf {root}/usr/local/etc/nslcd.conf
+      mv {root}/etc/ssl {root}/var/run/
+      ln -sf /var/run/ssl {root}/etc/ssl
+      rmdir {root}/var/log/samba4
+      ln -sf /tmp/samba4 {root}/var/log/samba4
+    entrypoint: [/usr/local/bin/groundcontrol, /usr/local/etc/groundcontrol.toml]
+
+snixy:
+  container:
+    tarball:
+      - repo: cynix/snixy
+        glob: '*-freebsd_{arch}.tar.gz'
+    user: snixy=940 # _tcpproxy
+
+step-ca:
+  container:
+    pkg:
+      - step-certificates
+      - pcsc-lite
+    user: step
+    entrypoint: /usr/local/sbin/step-ca
+
+step-posture-connector:
+  go:
+    repo: jedda/step-posture-connector
+    packages:
+      step-posture-connector:
+        container:
+          user: step-posture-connector=266 # step
+    build:
+      main: .
+
+sing-box:
+  go:
+    repo: sagernet/sing-box
+    packages:
+      sing-box:
+        container:
+          user: sing-box=360 # v2ray
+    build:
+      ldflags:
+        - -X=github.com/sagernet/sing-box/constant.Version={{ .Version }}
+      tags:
+        - with_gvisor
+        - with_quic
+        - with_dhcp
+        - with_wireguard
+        - with_utls
+        - with_acme
+        - with_clash_api
+        - with_tailscale
+
+victoria-logs:
+  go:
+    repo: VictoriaMetrics/VictoriaMetrics
+    regex: v(.+)-victorialogs
+    packages:
+      victoria-logs:
+        container:
+          user: victoria-logs=363
+    build:
+      main: ./app/{binary}
+      ldflags:
+        - '-X=github.com/VictoriaMetrics/VictoriaMetrics/lib/buildinfo.Version={{ .Version }}'
+      tags:
+        - netgo
+        - osusergo
+
+victoria-metrics:
+  go:
+    repo: VictoriaMetrics/VictoriaMetrics
+    packages:
+      victoria-metrics:
+        container:
+          user: victoria-metrics=289
+      vmalert:
+        container:
+          user: alertmanager=479
+      vmutils:
+        binaries:
+          - vmagent
+          - vmauth
+          - vmbackup
+          - vmctl
+          - vmrestore
+    build:
+      main: ./app/{binary}
+      ldflags:
+        - '-X=github.com/VictoriaMetrics/VictoriaMetrics/lib/buildinfo.Version={{ .Version }}'
+      tags:
+        - netgo
+        - osusergo

@@ -1,0 +1,18 @@
+---
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-fix
+        name: ruff-fix
+        language: system
+        entry: uvx
+        args: [ruff, check, --fix, --output-format=full]
+        types_or: [python]
+        require_serial: true
+      - id: ruff-format
+        name: ruff-format
+        language: system
+        entry: uvx
+        args: [ruff, format]
+        types_or: [python]
+        require_serial: true

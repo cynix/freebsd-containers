@@ -1,0 +1,58 @@
+diff --git c/diagnostic/network/collector_unix.go i/diagnostic/network/collector_unix.go
+index 2db2d262..94bfaa15 100644
+--- c/diagnostic/network/collector_unix.go
++++ i/diagnostic/network/collector_unix.go
+@@ -1,4 +1,4 @@
+-//go:build darwin || linux
++//go:build darwin || linux || freebsd
+ 
+ package diagnostic
+ 
+diff --git c/diagnostic/system_collector_other.go i/diagnostic/system_collector_other.go
+new file mode 100644
+index 00000000..7f71c62c
+--- /dev/null
++++ i/diagnostic/system_collector_other.go
+@@ -0,0 +1,42 @@
++//go:build !darwin && !linux && !windows
++
++package diagnostic
++
++import (
++	"context"
++	"fmt"
++	"runtime"
++)
++
++type SystemCollectorImpl struct {
++	version string
++}
++
++func NewSystemCollectorImpl(
++	version string,
++) *SystemCollectorImpl {
++	return &SystemCollectorImpl{
++		version,
++	}
++}
++
++func (collector *SystemCollectorImpl) Collect(ctx context.Context) (*SystemInformation, error) {
++	cloudflaredVersion := collector.version
++	info := NewSystemInformation(
++		0,
++		0,
++		0,
++		0,
++		"",
++		"",
++		"",
++		"",
++		"",
++		cloudflaredVersion,
++		runtime.Version(),
++		runtime.GOARCH,
++		nil,
++	)
++
++	return info, fmt.Errorf("system collector not implemented for this platform")
++}

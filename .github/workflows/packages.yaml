@@ -1,0 +1,106 @@
+name: Packages
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+      packages:
+        type: string
+        required: true
+
+jobs:
+  go:
+    if: "!!fromJSON(inputs.packages).go"
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include: ${{ fromJSON(inputs.packages).go }}
+    name: go (${{ matrix.package }})
+    steps:
+      - name: Free disk space
+        if: matrix.cgo
+        uses: jlumbroso/free-disk-space@main
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Checkout ${{ matrix.repo }}
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ matrix.repo }}
+          ref: ${{ matrix.ref }}
+          path: src
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: false
+
+      - name: Setup go
+        if: "!matrix.cgo"
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          check-latest: true
+
+      - name: Setup goreleaser
+        if: "!matrix.cgo"
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          install-only: true
+
+      - name: Build
+        shell: bash
+        env:
+          INPUT_PROJECT: ${{ inputs.project }}
+          INPUT_PACKAGE: ${{ matrix.package }}
+        run: ./go.py
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.project }}#${{ matrix.package }}
+          path: dist/${{ matrix.package }}-*.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    needs: [go]
+    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: ${{ inputs.project }}#*
+          path: ./dist/
+          merge-multiple: true
+
+      - name: Create release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.project }}-v${{ inputs.version }}
+        run: |
+          gh release delete --cleanup-tag --yes $TAG || echo "No existing $TAG"
+
+          echo "Releasing $TAG"
+          gh release create --latest=false --notes=$TAG --title=$TAG $TAG ./dist/*.tar.gz
+
+          for i in $(gh release list --json=tagName --jq="map(select(.tagName | startswith(\"${{ inputs.project }}-\")))[3:] | .[].tagName"); do
+            echo "Deleting $i"
+            gh release delete --cleanup-tag --yes $i || echo "Could not delete $i"
+          done

@@ -3,24 +3,33 @@ name: Build
 on:
   workflow_call:
     inputs:
-      container:
+      project:
         type: string
         required: true
-      enabled:
-        type: boolean
+      version:
+        type: string
+        required: false
+      containers:
+        type: string
         required: true
 
 jobs:
-  build:
-    if: ${{ inputs.enabled }}
+  container:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        container: ${{ fromJSON(inputs.containers) }}
     permissions:
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - run: |
+          echo "project=${{ inputs.project }} version=${{ inputs.version }} container=${{ matrix.container }}"
 
       - name: Build
+        if: false
         uses: vmactions/freebsd-vm@v1
         with:
           usesh: true
@@ -43,12 +52,13 @@ jobs:
 
           run: |
             set -ex
-            uv run --no-build --with=pygithub --with=ruamel-yaml ./build.py '${{ inputs.container }}'
+            ./container.py "${{ inputs.project }}" "${{ matrix.container }}"
 
       - name: Cleanup
+        if: false
         uses: dataaxiom/ghcr-cleanup-action@v1
         with:
-          package: ${{ inputs.container }}
+          package: ${{ matrix.container }}
           keep-n-tagged: 3
           exclude-tags: latest
           delete-untagged: true
